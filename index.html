@@ -1140,6 +1140,19 @@ function setUpAxis(axis){
   currentUpAxis = axis;
   refreshAfterTransform();
 }
+function flipUpsideDown(){
+  if(!positions){ toast('先に点群を読み込んでください'); return; }
+  const n = positions.length/3;
+  // X軸まわりに180°回転(上下反転・形は保たれる)
+  for(let i=0;i<n;i++){
+    positions[i*3+1] = -positions[i*3+1];
+    positions[i*3+2] = -positions[i*3+2];
+  }
+  globalOffset.y = -globalOffset.y;
+  globalOffset.z = -globalOffset.z;
+  refreshAfterTransform();
+  toast('上下を反転しました 🔄');
+}
 function refreshAfterTransform(){
   const n = positions.length/3;
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
