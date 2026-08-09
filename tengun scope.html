@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>かんたん点群スコープ</title>
+<style>
+:root{
+  --bg:#0e1116; --panel:rgba(24,29,36,.94); --panel-border:rgba(255,255,255,.09);
+  --text:#e8ecf1; --text-dim:#98a2ae;
+  --accent:#ff8a2a; --accent-soft:rgba(255,138,42,.16);
+  --blue:#3ec1ff; --green:#4cd97b; --red:#ff5d5d;
+  --radius:14px;
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{
+  font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+  background:var(--bg); color:var(--text);
+  touch-action:none;
+}
+button{font-family:inherit;border:none;cursor:pointer;color:inherit;background:none}
+input,select{font-family:inherit}
+
+/* ===== ビューア ===== */
+#viewer{position:fixed;inset:0}
+#viewer canvas{display:block}
+
+/* ===== ヘッダー ===== */
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:20;
+  display:flex;align-items:center;gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;
+  background:linear-gradient(to bottom,rgba(10,13,17,.85),transparent);
+  pointer-events:none;
+}
+#topbar>*{pointer-events:auto}
+#appTitle{font-weight:800;font-size:15px;letter-spacing:.03em;display:flex;align-items:center;gap:8px}
+#appTitle .dot{width:10px;height:10px;border-radius:3px;background:var(--accent);display:inline-block}
+#statusChip{
+  font-size:11px;color:var(--text-dim);background:rgba(0,0,0,.35);
+  padding:4px 10px;border-radius:999px;border:1px solid var(--panel-border);
+  max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+#topbar .spacer{flex:1}
+.iconBtn{
+  width:40px;height:40px;border-radius:12px;font-size:18px;
+  background:rgba(0,0,0,.35);border:1px solid var(--panel-border);
+  display:flex;align-items:center;justify-content:center;
+}
+.iconBtn:active{background:var(--accent-soft)}
+
+/* ===== ツールバー ===== */
+#toolbar{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--safe-bottom) + 12px);z-index:20;
+  display:flex;gap:4px;padding:6px;
+  background:var(--panel);border:1px solid var(--panel-border);
+  border-radius:18px;box-shadow:0 8px 30px rgba(0,0,0,.5);
+}
+.modeBtn{
+  min-width:62px;padding:8px 6px;border-radius:12px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  font-size:11px;color:var(--text-dim);font-weight:600;
+}
+.modeBtn .ic{font-size:20px;line-height:1}
+.modeBtn.active{background:var(--accent-soft);color:var(--accent)}
+.modeBtn:active{opacity:.7}
+
+/* ===== パネル共通 ===== */
+.panel{
+  position:fixed;z-index:19;left:10px;right:10px;
+  bottom:calc(var(--safe-bottom) + 88px);
+  background:var(--panel);border:1px solid var(--panel-border);
+  border-radius:var(--radius);padding:14px;
+  box-shadow:0 10px 34px rgba(0,0,0,.5);
+  display:none;max-height:52vh;overflow-y:auto;
+  touch-action:pan-y;
+}
+.panel.open{display:block}
+.panel h3{font-size:13px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.panel h3 .tag{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:2px 8px;border-radius:999px}
+.hint{font-size:12px;color:var(--text-dim);line-height:1.7}
+.row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.row label{font-size:12px;color:var(--text-dim);min-width:5.5em}
+.row input[type=range]{flex:1;accent-color:var(--accent)}
+.row input[type=number]{
+  flex:1;background:rgba(0,0,0,.3);border:1px solid var(--panel-border);
+  border-radius:10px;color:var(--text);padding:9px 10px;font-size:15px;min-width:0;
+}
+.row select{
+  flex:1;background:rgba(0,0,0,.3);border:1px solid var(--panel-border);
+  border-radius:10px;color:var(--text);padding:9px 10px;font-size:14px;
+}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:11px 16px;border-radius:12px;font-size:14px;font-weight:700;
+  background:var(--accent);color:#1a1005;
+}
+.btn:active{opacity:.85}
+.btn.ghost{background:rgba(255,255,255,.08);color:var(--text)}
+.btn.full{width:100%;margin-top:12px}
+.btnRow{display:flex;gap:8px;margin-top:12px}
+.btnRow .btn{flex:1}
+
+/* 測定結果 */
+.resultGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.resultGrid.three{grid-template-columns:1fr 1fr 1fr}
+.resCard{background:rgba(0,0,0,.28);border:1px solid var(--panel-border);border-radius:12px;padding:10px}
+.resCard .k{font-size:10px;color:var(--text-dim);font-weight:700}
+.resCard .v{font-size:17px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.resCard .v small{font-size:11px;font-weight:600;color:var(--text-dim);margin-left:2px}
+.resCard.hl .v{color:var(--accent)}
+
+/* 断面キャンバス */
+#sectionCanvas{width:100%;height:180px;background:rgba(0,0,0,.3);border:1px solid var(--panel-border);border-radius:12px;margin-top:10px;display:block}
+
+/* ===== スタート画面 ===== */
+#startScreen{
+  position:fixed;inset:0;z-index:30;background:radial-gradient(1200px 700px at 50% -10%,#1a2230,#0e1116 60%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;text-align:center;
+}
+#startScreen h1{font-size:26px;font-weight:900;letter-spacing:.02em;margin-bottom:6px}
+#startScreen h1 span{color:var(--accent)}
+#startScreen p.lead{font-size:13px;color:var(--text-dim);margin-bottom:26px;line-height:1.8}
+#dropZone{
+  width:min(440px,100%);border:2px dashed rgba(255,138,42,.5);border-radius:20px;
+  padding:34px 20px;background:rgba(255,138,42,.05);
+}
+#dropZone.over{background:rgba(255,138,42,.14);border-color:var(--accent)}
+#dropZone .big{font-size:40px;margin-bottom:10px}
+#dropZone p{font-size:14px;font-weight:700;margin-bottom:4px}
+#dropZone p.sub{font-size:11px;font-weight:500;color:var(--text-dim);margin-bottom:16px}
+#demoBtn{margin-top:18px;font-size:13px}
+#formats{margin-top:22px;font-size:11px;color:var(--text-dim);line-height:1.9}
+#formats b{color:var(--text)}
+
+/* ===== ローディング ===== */
+#loading{
+  position:fixed;inset:0;z-index:40;background:rgba(10,13,17,.85);
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+}
+#loading.show{display:flex}
+.spinner{width:44px;height:44px;border-radius:50%;border:4px solid rgba(255,255,255,.12);border-top-color:var(--accent);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loadingText{font-size:13px;color:var(--text-dim);font-weight:600}
+
+/* ===== ヘルプ ===== */
+#helpModal{
+  position:fixed;inset:0;z-index:50;background:rgba(5,7,10,.7);display:none;
+  align-items:flex-end;justify-content:center;
+}
+#helpModal.show{display:flex}
+#helpBox{
+  width:min(560px,100%);max-height:78vh;overflow-y:auto;
+  background:var(--panel);border:1px solid var(--panel-border);
+  border-radius:20px 20px 0 0;padding:20px 18px calc(var(--safe-bottom) + 20px);
+  touch-action:pan-y;
+}
+#helpBox h2{font-size:16px;font-weight:900;margin-bottom:12px}
+.helpItem{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.helpItem:last-of-type{border-bottom:none}
+.helpItem .ic{font-size:22px;width:32px;text-align:center;flex-shrink:0}
+.helpItem b{font-size:13px;display:block;margin-bottom:2px}
+.helpItem p{font-size:12px;color:var(--text-dim);line-height:1.7}
+
+/* ===== トースト ===== */
+#toast{
+  position:fixed;left:50%;transform:translateX(-50%);
+  top:calc(env(safe-area-inset-top,0px) + 64px);z-index:60;
+  background:var(--panel);border:1px solid var(--panel-border);
+  padding:10px 18px;border-radius:999px;font-size:13px;font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+  opacity:0;transition:opacity .25s;pointer-events:none;
+  max-width:90vw;text-align:center;
+}
+#toast.show{opacity:1}
+
+/* 操作ガイド(画面中央上) */
+#modeGuide{
+  position:fixed;left:50%;transform:translateX(-50%);
+  top:calc(env(safe-area-inset-top,0px) + 62px);z-index:15;
+  font-size:12px;font-weight:700;color:var(--text);
+  background:rgba(0,0,0,.45);border:1px solid var(--panel-border);
+  padding:7px 16px;border-radius:999px;display:none;
+}
+#modeGuide.show{display:block}
+
+/* PC レイアウト */
+@media(min-width:900px){
+  .panel{left:auto;right:16px;bottom:auto;top:80px;width:360px;max-height:calc(100vh - 180px)}
+  #toolbar{bottom:20px}
+  .modeBtn{min-width:74px}
+}
+</style>
+</head>
+<body>
+
+<div id="viewer"></div>
+
+<!-- ヘッダー -->
+<div id="topbar">
+  <div id="appTitle"><span class="dot"></span>かんたん点群スコープ</div>
+  <div id="statusChip" style="display:none"></div>
+  <div class="spacer"></div>
+  <button class="iconBtn" id="openFileBtn" title="ファイルを開く">📂</button>
+  <button class="iconBtn" id="helpBtn" title="使い方">❓</button>
+</div>
+
+<div id="modeGuide"></div>
+
+<!-- ツールバー -->
+<nav id="toolbar" style="display:none">
+  <button class="modeBtn active" data-mode="view"><span class="ic">🖐️</span>表示</button>
+  <button class="modeBtn" data-mode="dist"><span class="ic">📏</span>距離</button>
+  <button class="modeBtn" data-mode="section"><span class="ic">⛰️</span>断面</button>
+  <button class="modeBtn" data-mode="volume"><span class="ic">🧮</span>土量</button>
+  <button class="modeBtn" data-mode="settings"><span class="ic">⚙️</span>設定</button>
+</nav>
+
+<!-- 距離パネル -->
+<div class="panel" id="panel-dist">
+  <h3>📏 距離測定 <span class="tag">画面の点をタップ</span></h3>
+  <p class="hint" id="distHint">測りたい <b>1点目</b> をタップしてください。</p>
+  <div class="resultGrid three" id="distResults" style="display:none">
+    <div class="resCard hl"><div class="k">斜距離</div><div class="v" id="dist3d">-</div></div>
+    <div class="resCard"><div class="k">水平距離</div><div class="v" id="distH">-</div></div>
+    <div class="resCard"><div class="k">高低差</div><div class="v" id="distV">-</div></div>
+  </div>
+  <div class="btnRow">
+    <button class="btn ghost" id="distClearBtn">やり直す</button>
+  </div>
+</div>
+
+<!-- 断面パネル -->
+<div class="panel" id="panel-section">
+  <h3>⛰️ 断面図 <span class="tag">2点で切断線を指定</span></h3>
+  <p class="hint" id="sectionHint">断面を見たい線の <b>始点</b> をタップしてください。</p>
+  <div class="row" id="sectionWidthRow" style="display:none">
+    <label>切取り幅</label>
+    <input type="range" id="sectionWidth" min="0.05" max="2" step="0.05" value="0.3">
+    <span style="font-size:12px;min-width:3.5em;text-align:right" id="sectionWidthVal">0.30 m</span>
+  </div>
+  <canvas id="sectionCanvas" style="display:none"></canvas>
+  <div class="resultGrid three" id="sectionResults" style="display:none">
+    <div class="resCard"><div class="k">断面の長さ</div><div class="v" id="secLen">-</div></div>
+    <div class="resCard"><div class="k">最高点</div><div class="v" id="secMax">-</div></div>
+    <div class="resCard"><div class="k">最低点</div><div class="v" id="secMin">-</div></div>
+  </div>
+  <div class="btnRow">
+    <button class="btn ghost" id="sectionClearBtn">やり直す</button>
+  </div>
+</div>
+
+<!-- 土量パネル -->
+<div class="panel" id="panel-volume">
+  <h3>🧮 土量計算 <span class="tag">基準の高さから計算</span></h3>
+  <p class="hint">基準の高さ(標高)を決めると、それより<b>上の量(盛土)</b>と<b>下の量(切土)</b>を計算します。</p>
+  <div class="row">
+    <label>基準の高さ</label>
+    <input type="number" id="volBase" step="0.1"> <span style="font-size:12px">m</span>
+  </div>
+  <div class="row">
+    <label>計算の細かさ</label>
+    <select id="volGrid">
+      <option value="0.25">細かい(0.25m)</option>
+      <option value="0.5" selected>ふつう(0.5m)</option>
+      <option value="1">粗い(1m)</option>
+    </select>
+  </div>
+  <button class="btn full" id="volCalcBtn">計算する</button>
+  <div class="resultGrid" id="volResults" style="display:none;grid-template-columns:1fr 1fr">
+    <div class="resCard hl"><div class="k">盛土量(基準より上)</div><div class="v" id="volFill">-</div></div>
+    <div class="resCard"><div class="k">切土量(基準より下)</div><div class="v" id="volCut">-</div></div>
+    <div class="resCard"><div class="k">対象面積</div><div class="v" id="volArea">-</div></div>
+    <div class="resCard"><div class="k">点のある範囲</div><div class="v" id="volCells">-</div></div>
+  </div>
+  <p class="hint" id="volNote" style="display:none;margin-top:8px"></p>
+</div>
+
+<!-- 設定パネル -->
+<div class="panel" id="panel-settings">
+  <h3>⚙️ 表示設定</h3>
+  <div class="row">
+    <label>点の大きさ</label>
+    <input type="range" id="ptSize" min="0.2" max="5" step="0.1" value="1">
+  </div>
+  <div class="row">
+    <label>色の付け方</label>
+    <select id="colorMode">
+      <option value="height">高さで色分け</option>
+      <option value="rgb">元の色(RGB)</option>
+      <option value="single">単色</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>上の向き</label>
+    <select id="upAxis">
+      <option value="Z">Z軸が上(測量データ)</option>
+      <option value="Y">Y軸が上(スキャンアプリ)</option>
+    </select>
+  </div>
+  <div class="btnRow">
+    <button class="btn ghost" id="resetViewBtn">🎯 視点リセット</button>
+    <button class="btn ghost" id="newFileBtn">📂 別のファイル</button>
+  </div>
+  <p class="hint" id="cloudInfo" style="margin-top:12px"></p>
+</div>
+
+<!-- スタート画面 -->
+<div id="startScreen">
+  <h1>かんたん<span>点群</span>スコープ</h1>
+  <p class="lead">3次元点群(3Dスキャンデータ)をブラウザで開いて、<br>回して見る・測る・断面・土量計算ができます。</p>
+  <div id="dropZone">
+    <div class="big">📂</div>
+    <p>点群ファイルをここにドロップ</p>
+    <p class="sub">またはボタンから選択(iPhoneは「ファイル」アプリから選べます)</p>
+    <button class="btn" id="pickFileBtn">ファイルを選ぶ</button>
+  </div>
+  <button class="btn ghost" id="demoBtn">🏔️ まずはデモ地形で試してみる</button>
+  <div id="formats">
+    対応形式: <b>XYZ / CSV / TXT / PTS</b>(テキスト) ・ <b>LAS</b> ・ <b>PLY</b><br>
+    Scaniverse等のiPhoneスキャンアプリのPLYもOK(上下の向きは自動補正)<br>
+    ※ LAZ(圧縮)は非対応です。変換ソフトでLASにしてから読み込んでください。
+  </div>
+</div>
+
+<!-- ローディング -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loadingText">読み込み中...</div>
+</div>
+
+<!-- ヘルプ -->
+<div id="helpModal">
+  <div id="helpBox">
+    <h2>❓ 使い方</h2>
+    <div class="helpItem"><div class="ic">🖐️</div><div><b>表示モード</b><p>指1本でドラッグ → 回転 / 指2本で広げる → 拡大縮小 / 指2本でスライド → 移動<br>(PC: 左ドラッグ=回転、ホイール=拡大、右ドラッグ=移動)</p></div></div>
+    <div class="helpItem"><div class="ic">📏</div><div><b>距離モード</b><p>点群の上を2か所タップすると、斜距離・水平距離・高低差が出ます。</p></div></div>
+    <div class="helpItem"><div class="ic">⛰️</div><div><b>断面モード</b><p>2か所タップして線を引くと、その線に沿った断面図(横から見た形)が出ます。</p></div></div>
+    <div class="helpItem"><div class="ic">🧮</div><div><b>土量モード</b><p>基準の高さを入れて「計算する」を押すと、盛土量・切土量が出ます。</p></div></div>
+    <div class="helpItem"><div class="ic">💡</div><div><b>コツ</b><p>測定モード中でもドラッグで視点は動かせます。タップ(すぐ離す)で点を選択します。</p></div></div>
+    <button class="btn full" id="helpCloseBtn">閉じる</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<input type="file" id="fileInput" accept=".xyz,.csv,.txt,.pts,.las,.laz,.ply" style="display:none">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =========================================================
+   かんたん点群スコープ
+   ========================================================= */
+"use strict";
+
+const $ = id => document.getElementById(id);
+const isMobile = ('ontouchstart' in window) && Math.min(screen.width, screen.height) < 820;
+const MAX_POINTS = isMobile ? 700000 : 2500000;
+
+/* ---------- 状態 ---------- */
+let scene, camera, renderer, controls;
+let pointsObj = null;          // THREE.Points
+let positions = null;          // Float32Array (ローカル座標)
+let rgbColors = null;          // Uint8Array or null (元の色)
+let globalOffset = {x:0, y:0, z:0}; // 実座標 = ローカル + offset
+let cloudRadius = 10;
+let zMinLocal = 0, zMaxLocal = 1;
+let pointCountTotal = 0, pointCountShown = 0, sampleStep = 1;
+let mode = 'view';
+let picked = [];               // 選択点 [Vector3(ローカル)]
+let markerGroup = null;
+let sectionData = null;        // {p1,p2}
+let baseMaterialSize = 0.05;
+
+/* ---------- ユーティリティ ---------- */
+function toast(msg, ms=2600){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>t.classList.remove('show'), ms);
+}
+function showLoading(text){
+  $('loadingText').textContent = text;
+  $('loading').classList.add('show');
+}
+function hideLoading(){ $('loading').classList.remove('show'); }
+function setLoadingText(text){ $('loadingText').textContent = text; }
+const tick = () => new Promise(r => setTimeout(r, 0));
+const fmt = (n, d=2) => n.toLocaleString('ja-JP', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmtInt = n => Math.round(n).toLocaleString('ja-JP');
+function realZ(localZ){ return localZ + globalOffset.z; }
+
+/* =========================================================
+   Three.js 初期化
+   ========================================================= */
+function initThree(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0e1116);
+
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.05, 100000);
+  camera.up.set(0,0,1); // Z軸を上に(測量座標系)
+
+  renderer = new THREE.WebGLRenderer({antialias:!isMobile, powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  $('viewer').appendChild(renderer.domElement);
+
+  markerGroup = new THREE.Group();
+  scene.add(markerGroup);
+
+  controls = new SimpleOrbit(camera, renderer.domElement);
+
+  window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  (function loop(){
+    requestAnimationFrame(loop);
+    controls.update();
+    renderer.render(scene, camera);
+  })();
+}
+
+/* =========================================================
+   シンプル軌道コントロール(タッチ&マウス両対応)
+   ========================================================= */
+class SimpleOrbit{
+  constructor(cam, dom){
+    this.cam = cam; this.dom = dom;
+    this.target = new THREE.Vector3();
+    this.theta = Math.PI/4;   // 方位角
+    this.phi = Math.PI/3;     // 天頂角
+    this.radius = 30;
+    this.minRadius = 0.1; this.maxRadius = 100000;
+    this._dirty = true;
+
+    // タップ検出用
+    this._downPos = null; this._downTime = 0; this._moved = false;
+
+    dom.addEventListener('mousedown', e => this._onMouseDown(e));
+    window.addEventListener('mousemove', e => this._onMouseMove(e));
+    window.addEventListener('mouseup', e => this._onMouseUp(e));
+    dom.addEventListener('wheel', e => { e.preventDefault(); this.zoomBy(Math.pow(0.95, -e.deltaY/40)); }, {passive:false});
+    dom.addEventListener('contextmenu', e => e.preventDefault());
+
+    dom.addEventListener('touchstart', e => this._onTouchStart(e), {passive:false});
+    dom.addEventListener('touchmove', e => this._onTouchMove(e), {passive:false});
+    dom.addEventListener('touchend', e => this._onTouchEnd(e), {passive:false});
+  }
+  /* --- マウス --- */
+  _onMouseDown(e){
+    this._mouse = {x:e.clientX, y:e.clientY, btn:e.button};
+    this._downPos = {x:e.clientX, y:e.clientY}; this._downTime = Date.now(); this._moved = false;
+  }
+  _onMouseMove(e){
+    if(!this._mouse) return;
+    const dx = e.clientX - this._mouse.x, dy = e.clientY - this._mouse.y;
+    if(Math.abs(e.clientX-this._downPos.x)+Math.abs(e.clientY-this._downPos.y) > 6) this._moved = true;
+    if(this._mouse.btn === 0) this.rotateBy(dx, dy);
+    else this.panBy(dx, dy);
+    this._mouse.x = e.clientX; this._mouse.y = e.clientY;
+  }
+  _onMouseUp(e){
+    if(this._mouse && !this._moved && Date.now()-this._downTime < 500){
+      onTap(e.clientX, e.clientY);
+    }
+    this._mouse = null;
+  }
+  /* --- タッチ --- */
+  _onTouchStart(e){
+    e.preventDefault();
+    if(e.touches.length === 1){
+      const t = e.touches[0];
+      this._touch = {x:t.clientX, y:t.clientY};
+      this._downPos = {x:t.clientX, y:t.clientY}; this._downTime = Date.now(); this._moved = false;
+    }else if(e.touches.length === 2){
+      this._touch = null;
+      const [a,b] = e.touches;
+      this._pinch = {
+        dist: Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY),
+        cx: (a.clientX+b.clientX)/2, cy: (a.clientY+b.clientY)/2
+      };
+      this._moved = true;
+    }
+  }
+  _onTouchMove(e){
+    e.preventDefault();
+    if(e.touches.length === 1 && this._touch){
+      const t = e.touches[0];
+      const dx = t.clientX - this._touch.x, dy = t.clientY - this._touch.y;
+      if(Math.abs(t.clientX-this._downPos.x)+Math.abs(t.clientY-this._downPos.y) > 8) this._moved = true;
+      this.rotateBy(dx, dy);
+      this._touch.x = t.clientX; this._touch.y = t.clientY;
+    }else if(e.touches.length === 2 && this._pinch){
+      const [a,b] = e.touches;
+      const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      const cx = (a.clientX+b.clientX)/2, cy = (a.clientY+b.clientY)/2;
+      this.zoomBy(dist / this._pinch.dist);
+      this.panBy(cx - this._pinch.cx, cy - this._pinch.cy);
+      this._pinch = {dist, cx, cy};
+    }
+  }
+  _onTouchEnd(e){
+    e.preventDefault();
+    if(e.touches.length === 0){
+      if(this._touch && !this._moved && Date.now()-this._downTime < 500){
+        onTap(this._downPos.x, this._downPos.y);
+      }
+      this._touch = null; this._pinch = null;
+    }else if(e.touches.length === 1){
+      this._pinch = null;
+      const t = e.touches[0];
+      this._touch = {x:t.clientX, y:t.clientY};
+      this._moved = true; // ピンチ後の指残りはタップ扱いにしない
+    }
+  }
+  /* --- 動作 --- */
+  rotateBy(dx, dy){
+    this.theta -= dx * 0.006;
+    this.phi   -= dy * 0.006;
+    this.phi = Math.max(0.02, Math.min(Math.PI - 0.02, this.phi));
+    this._dirty = true;
+  }
+  panBy(dx, dy){
+    const scale = this.radius * 0.0013;
+    const dir = new THREE.Vector3().subVectors(this.target, this.cam.position).normalize();
+    const right = new THREE.Vector3().crossVectors(dir, this.cam.up).normalize();
+    const up = new THREE.Vector3().crossVectors(right, dir).normalize();
+    this.target.addScaledVector(right, -dx*scale);
+    this.target.addScaledVector(up, dy*scale);
+    this._dirty = true;
+  }
+  zoomBy(factor){
+    this.radius = Math.max(this.minRadius, Math.min(this.maxRadius, this.radius / factor));
+    this._dirty = true;
+  }
+  fit(center, radius){
+    this.target.copy(center);
+    this.radius = radius * 2.2;
+    this.minRadius = radius * 0.005;
+    this.maxRadius = radius * 30;
+    this.theta = Math.PI/4; this.phi = Math.PI/3.2;
+    this._dirty = true;
+  }
+  update(){
+    if(!this._dirty) return;
+    const sp = Math.sin(this.phi), cp = Math.cos(this.phi);
+    this.cam.position.set(
+      this.target.x + this.radius * sp * Math.cos(this.theta),
+      this.target.y + this.radius * sp * Math.sin(this.theta),
+      this.target.z + this.radius * cp
+    );
+    this.cam.lookAt(this.target);
+    this._dirty = false;
+  }
+}
+
+/* =========================================================
+   点群パーサー
+   ========================================================= */
+
+/* --- テキスト形式 (XYZ / CSV / PTS) --- */
+async function parseText(buffer){
+  setLoadingText('テキストを解析中...');
+  const text = new TextDecoder('utf-8').decode(buffer);
+  const lines = text.split(/\r?\n/);
+  const total = lines.length;
+
+  // データ行を推定して区切り文字を判定
+  let delim = null, startCol = 0;
+  for(let i=0; i<Math.min(50,total); i++){
+    const l = lines[i].trim();
+    if(!l) continue;
+    const byComma = l.split(',');
+    const bySpace = l.split(/[\s]+/);
+    if(byComma.length >= 3 && byComma.slice(0,3).every(v=>isFinite(parseFloat(v)))){ delim=','; break; }
+    if(bySpace.length >= 3 && bySpace.slice(0,3).every(v=>isFinite(parseFloat(v)))){ delim='ws'; break; }
+  }
+  if(!delim) throw new Error('数値データが見つかりませんでした。x y z 形式のテキストか確認してください。');
+
+  // 有効行を数える(サンプリング率決定のため概算: 全行=候補)
+  const step = Math.max(1, Math.ceil(total / MAX_POINTS));
+  const xs=[], ys=[], zs=[], rs=[], gs=[], bs=[];
+  let hasRGB = null;
+
+  for(let i=0; i<total; i+=step){
+    const l = lines[i].trim();
+    if(!l) continue;
+    const parts = delim===',' ? l.split(',') : l.split(/\s+/);
+    if(parts.length < 3) continue;
+    const x = parseFloat(parts[0]), y = parseFloat(parts[1]), z = parseFloat(parts[2]);
+    if(!isFinite(x)||!isFinite(y)||!isFinite(z)) continue;
+    xs.push(x); ys.push(y); zs.push(z);
+
+    if(hasRGB === null){
+      // 色列の判定: 6列→3,4,5 / 7列以上→4,5,6 (PTS: x y z i r g b)
+      if(parts.length >= 7 && isFinite(parseFloat(parts[6]))) hasRGB = 4;
+      else if(parts.length >= 6 && isFinite(parseFloat(parts[5]))) hasRGB = 3;
+      else hasRGB = -1;
+    }
+    if(hasRGB >= 0){
+      let r = parseFloat(parts[hasRGB]), g = parseFloat(parts[hasRGB+1]), b = parseFloat(parts[hasRGB+2]);
+      if(!isFinite(r)){ r=g=b=200; }
+      rs.push(r); gs.push(g); bs.push(b);
+    }
+    if(xs.length % 200000 === 0){
+      setLoadingText(`テキストを解析中... ${fmtInt(xs.length)} 点`);
+      await tick();
+    }
+  }
+  if(xs.length === 0) throw new Error('点データを読み取れませんでした。');
+
+  // RGBが0〜1の場合は255倍
+  let colors = null;
+  if(hasRGB >= 0 && rs.length === xs.length){
+    let maxC = 0;
+    for(let i=0;i<Math.min(rs.length,5000);i++) maxC = Math.max(maxC, rs[i], gs[i], bs[i]);
+    const scale = maxC <= 1.01 ? 255 : (maxC > 256 ? 255/65535 : 1);
+    colors = new Uint8Array(xs.length*3);
+    for(let i=0;i<xs.length;i++){
+      colors[i*3]   = Math.min(255, rs[i]*scale);
+      colors[i*3+1] = Math.min(255, gs[i]*scale);
+      colors[i*3+2] = Math.min(255, bs[i]*scale);
+    }
+  }
+  return {xs, ys, zs, colors, total: Math.round(total/ (step>1?1:1)), step};
+}
+
+/* --- LAS 形式 --- */
+async function parseLAS(buffer){
+  setLoadingText('LASファイルを解析中...');
+  const dv = new DataView(buffer);
+  const sig = String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3));
+  if(sig !== 'LASF') throw new Error('LASファイルではないようです(先頭がLASFではありません)。');
+
+  const fmtRaw = dv.getUint8(104);
+  if(fmtRaw & 0x80) throw new Error('これはLAZ(圧縮)ファイルです。CloudCompareなどの無料ソフトでLAS形式に変換してから読み込んでください。');
+  const pfmt = fmtRaw & 0x3f;
+  const recLen = dv.getUint16(105, true);
+  const dataOffset = dv.getUint32(96, true);
+  const vMin = dv.getUint8(25);
+  let count = dv.getUint32(107, true);
+  if(count === 0 && vMin >= 4 && buffer.byteLength >= 255){
+    count = Number(dv.getBigUint64(247, true));
+  }
+  const sx = dv.getFloat64(131,true), sy = dv.getFloat64(139,true), sz = dv.getFloat64(147,true);
+  const ox = dv.getFloat64(155,true), oy = dv.getFloat64(163,true), oz = dv.getFloat64(171,true);
+
+  const rgbOffMap = {2:20, 3:28, 5:28, 7:30, 8:30, 10:30};
+  const rgbOff = rgbOffMap[pfmt];
+
+  const maxAvail = Math.floor((buffer.byteLength - dataOffset) / recLen);
+  count = Math.min(count, maxAvail);
+  if(count <= 0) throw new Error('点データが見つかりませんでした。');
+
+  const step = Math.max(1, Math.ceil(count / MAX_POINTS));
+  const n = Math.floor((count - 1) / step) + 1;
+  const xs = new Float64Array(n), ys = new Float64Array(n), zs = new Float64Array(n);
+  let colors = rgbOff !== undefined ? new Uint8Array(n*3) : null;
+  let rgb16 = false;
+  // RGBが16bitか事前サンプリング
+  if(colors){
+    for(let i=0; i<Math.min(count, 2000); i++){
+      const base = dataOffset + i*recLen;
+      if(dv.getUint16(base+rgbOff,true) > 255 || dv.getUint16(base+rgbOff+2,true) > 255 || dv.getUint16(base+rgbOff+4,true) > 255){ rgb16 = true; break; }
+    }
+  }
+
+  let j = 0;
+  for(let i=0; i<count; i+=step){
+    const base = dataOffset + i*recLen;
+    xs[j] = dv.getInt32(base,true)*sx + ox;
+    ys[j] = dv.getInt32(base+4,true)*sy + oy;
+    zs[j] = dv.getInt32(base+8,true)*sz + oz;
+    if(colors){
+      let r = dv.getUint16(base+rgbOff,true), g = dv.getUint16(base+rgbOff+2,true), b = dv.getUint16(base+rgbOff+4,true);
+      if(rgb16){ r>>=8; g>>=8; b>>=8; }
+      colors[j*3]=r; colors[j*3+1]=g; colors[j*3+2]=b;
+    }
+    j++;
+    if(j % 300000 === 0){
+      setLoadingText(`LASを解析中... ${fmtInt(j)} / ${fmtInt(n)} 点`);
+      await tick();
+    }
+  }
+  // 色が全部0なら色なし扱い
+  if(colors){
+    let any = false;
+    for(let i=0;i<Math.min(colors.length, 30000);i++){ if(colors[i]>0){ any=true; break; } }
+    if(!any) colors = null;
+  }
+  return {xs, ys, zs, colors, total: count, step};
+}
+
+/* --- PLY 形式 --- */
+async function parsePLY(buffer){
+  setLoadingText('PLYファイルを解析中...');
+  const head = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 65536));
+  let headerText = '';
+  for(let i=0;i<head.length;i++) headerText += String.fromCharCode(head[i]);
+  const endIdx = headerText.indexOf('end_header');
+  if(endIdx < 0) throw new Error('PLYヘッダーが読み取れませんでした。');
+  const headerEnd = headerText.indexOf('\n', endIdx) + 1;
+  const header = headerText.slice(0, headerEnd);
+
+  const isAscii = /format\s+ascii/.test(header);
+  const isLE = /format\s+binary_little_endian/.test(header);
+  if(!isAscii && !isLE) throw new Error('このPLY形式(big endian)には対応していません。');
+
+  const vm = header.match(/element\s+vertex\s+(\d+)/);
+  if(!vm) throw new Error('PLYに頂点データが見つかりませんでした。');
+  const count = parseInt(vm[1]);
+
+  // vertex要素のプロパティを取得
+  const lines = header.split('\n');
+  const props = [];
+  let inVertex = false;
+  const typeSize = {char:1,uchar:1,int8:1,uint8:1,short:2,ushort:2,int16:2,uint16:2,int:4,uint:4,int32:4,uint32:4,float:4,float32:4,double:8,float64:8};
+  for(const l of lines){
+    const t = l.trim().split(/\s+/);
+    if(t[0]==='element'){ inVertex = (t[1]==='vertex'); continue; }
+    if(inVertex && t[0]==='property'){
+      if(t[1]==='list') throw new Error('このPLYの頂点形式(list)には対応していません。');
+      props.push({type:t[1], name:t[2], size:typeSize[t[1]]||4});
+    }
+  }
+  const stride = props.reduce((s,p)=>s+p.size,0);
+  const offOf = {}; let acc=0;
+  for(const p of props){ offOf[p.name] = {off:acc, type:p.type}; acc += p.size; }
+  if(!('x' in offOf)) throw new Error('PLYにx,y,z座標が見つかりませんでした。');
+  const hasColor = ('red' in offOf) && ('green' in offOf) && ('blue' in offOf);
+
+  const step = Math.max(1, Math.ceil(count / MAX_POINTS));
+  const n = Math.floor((count-1)/step)+1;
+  const xs = new Float64Array(n), ys = new Float64Array(n), zs = new Float64Array(n);
+  const colors = hasColor ? new Uint8Array(n*3) : null;
+
+  if(isAscii){
+    const body = new TextDecoder().decode(new Uint8Array(buffer, headerEnd));
+    const bodyLines = body.split(/\r?\n/);
+    const ix = props.findIndex(p=>p.name==='x'), iy = props.findIndex(p=>p.name==='y'), iz = props.findIndex(p=>p.name==='z');
+    const ir = props.findIndex(p=>p.name==='red'), ig = props.findIndex(p=>p.name==='green'), ib = props.findIndex(p=>p.name==='blue');
+    let j=0;
+    for(let i=0; i<count && i<bodyLines.length; i+=step){
+      const parts = bodyLines[i].trim().split(/\s+/);
+      if(parts.length < 3) continue;
+      xs[j]=parseFloat(parts[ix]); ys[j]=parseFloat(parts[iy]); zs[j]=parseFloat(parts[iz]);
+      if(colors){ colors[j*3]=parseFloat(parts[ir]); colors[j*3+1]=parseFloat(parts[ig]); colors[j*3+2]=parseFloat(parts[ib]); }
+      j++;
+      if(j%300000===0){ setLoadingText(`PLYを解析中... ${fmtInt(j)} 点`); await tick(); }
+    }
+    return {xs:xs.subarray(0,j), ys:ys.subarray(0,j), zs:zs.subarray(0,j), colors, total:count, step};
+  }else{
+    const dv = new DataView(buffer);
+    const read = (base, p) => {
+      const o = base + p.off;
+      switch(p.type){
+        case 'float': case 'float32': return dv.getFloat32(o, true);
+        case 'double': case 'float64': return dv.getFloat64(o, true);
+        case 'uchar': case 'uint8': return dv.getUint8(o);
+        case 'char': case 'int8': return dv.getInt8(o);
+        case 'ushort': case 'uint16': return dv.getUint16(o, true);
+        case 'short': case 'int16': return dv.getInt16(o, true);
+        case 'uint': case 'uint32': return dv.getUint32(o, true);
+        default: return dv.getInt32(o, true);
+      }
+    };
+    const px = offOf['x'], py = offOf['y'], pz = offOf['z'];
+    const pr = offOf['red'], pg = offOf['green'], pb = offOf['blue'];
+    const maxAvail = Math.floor((buffer.byteLength - headerEnd)/stride);
+    const cnt = Math.min(count, maxAvail);
+    let j=0;
+    for(let i=0; i<cnt; i+=step){
+      const base = headerEnd + i*stride;
+      xs[j] = read(base, {off:px.off, type:px.type});
+      ys[j] = read(base, {off:py.off, type:py.type});
+      zs[j] = read(base, {off:pz.off, type:pz.type});
+      if(colors){
+        colors[j*3] = read(base, {off:pr.off, type:pr.type});
+        colors[j*3+1] = read(base, {off:pg.off, type:pg.type});
+        colors[j*3+2] = read(base, {off:pb.off, type:pb.type});
+      }
+      j++;
+      if(j%300000===0){ setLoadingText(`PLYを解析中... ${fmtInt(j)} 点`); await tick(); }
+    }
+    return {xs:xs.subarray(0,j), ys:ys.subarray(0,j), zs:zs.subarray(0,j), colors, total:count, step};
+  }
+}
+
+/* =========================================================
+   点群の構築・表示
+   ========================================================= */
+async function buildCloud(data){
+  setLoadingText('3D表示を準備中...');
+  await tick();
+  const n = data.xs.length;
+
+  // 重心で中心化(測量座標の精度落ち対策)
+  let cx=0, cy=0, cz=0;
+  for(let i=0;i<n;i++){ cx+=data.xs[i]; cy+=data.ys[i]; cz+=data.zs[i]; }
+  cx/=n; cy/=n; cz/=n;
+  globalOffset = {x:cx, y:cy, z:cz};
+
+  positions = new Float32Array(n*3);
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+  for(let i=0;i<n;i++){
+    const x = data.xs[i]-cx, y = data.ys[i]-cy, z = data.zs[i]-cz;
+    positions[i*3]=x; positions[i*3+1]=y; positions[i*3+2]=z;
+    if(x<minX)minX=x; if(x>maxX)maxX=x;
+    if(y<minY)minY=y; if(y>maxY)maxY=y;
+    if(z<minZ)minZ=z; if(z>maxZ)maxZ=z;
+  }
+  zMinLocal = minZ; zMaxLocal = maxZ;
+  cloudRadius = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2 || 1;
+  rgbColors = data.colors || null;
+  pointCountTotal = data.total;
+  pointCountShown = n;
+  sampleStep = data.step;
+  currentUpAxis = 'Z';
+  $('upAxis').value = 'Z';
+
+  // 既存を破棄
+  if(pointsObj){
+    scene.remove(pointsObj);
+    pointsObj.geometry.dispose();
+    pointsObj.material.dispose();
+    pointsObj = null;
+  }
+  clearMarkers();
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n*3), 3));
+
+  baseMaterialSize = cloudRadius / 260;
+  const mat = new THREE.PointsMaterial({
+    size: baseMaterialSize * parseFloat($('ptSize').value),
+    vertexColors: true,
+    sizeAttenuation: true
+  });
+  pointsObj = new THREE.Points(geo, mat);
+  scene.add(pointsObj);
+
+  // 色モード初期値: RGBがあればRGB、なければ高さ
+  $('colorMode').value = rgbColors ? 'rgb' : 'height';
+  applyColors();
+
+  controls.fit(new THREE.Vector3((minX+maxX)/2,(minY+maxY)/2,(minZ+maxZ)/2), cloudRadius);
+
+  // 表示情報
+  const chip = $('statusChip');
+  chip.style.display = '';
+  chip.textContent = sampleStep > 1
+    ? `${fmtInt(pointCountShown)} 点表示(1/${sampleStep}に間引き)`
+    : `${fmtInt(pointCountShown)} 点`;
+  $('cloudInfo').innerHTML =
+    `点数: <b>${fmtInt(pointCountShown)}</b>` +
+    (sampleStep>1 ? ` (元 ${fmtInt(pointCountTotal)} 点を 1/${sampleStep} に間引き)` : '') +
+    `<br>広がり: 約 ${fmt(maxX-minX,1)} × ${fmt(maxY-minY,1)} m` +
+    `<br>標高: ${fmt(realZ(minZ),2)} 〜 ${fmt(realZ(maxZ),2)} m` +
+    (rgbColors ? '<br>色情報: あり(RGB)' : '<br>色情報: なし(高さで色分け)');
+
+  // 土量の基準初期値 = 最低標高
+  $('volBase').value = fmt(realZ(minZ), 2).replace(/,/g,'');
+
+  $('startScreen').style.display = 'none';
+  $('toolbar').style.display = '';
+  setMode('view');
+  hideLoading();
+  toast('読み込み完了!指でぐるぐる回してみてください 🖐️');
+}
+
+/* --- 色付け --- */
+function heightColor(t, out){
+  // 青→水色→緑→黄→赤
+  let r,g,b;
+  if(t<0.25){ const u=t/0.25; r=0.15; g=0.3+u*0.55; b=0.9; }
+  else if(t<0.5){ const u=(t-0.25)/0.25; r=0.15+u*0.1; g=0.85; b=0.9-u*0.6; }
+  else if(t<0.75){ const u=(t-0.5)/0.25; r=0.25+u*0.72; g=0.85; b=0.3-u*0.15; }
+  else { const u=(t-0.75)/0.25; r=0.97; g=0.85-u*0.6; b=0.15; }
+  out[0]=r; out[1]=g; out[2]=b;
+}
+function applyColors(){
+  if(!pointsObj) return;
+  const modeC = $('colorMode').value;
+  const attr = pointsObj.geometry.getAttribute('color');
+  const arr = attr.array;
+  const n = arr.length/3;
+  const range = Math.max(zMaxLocal - zMinLocal, 0.001);
+  const tmp = [0,0,0];
+  if(modeC === 'rgb' && rgbColors){
+    for(let i=0;i<n;i++){
+      arr[i*3] = rgbColors[i*3]/255;
+      arr[i*3+1] = rgbColors[i*3+1]/255;
+      arr[i*3+2] = rgbColors[i*3+2]/255;
+    }
+  }else if(modeC === 'single'){
+    for(let i=0;i<n;i++){ arr[i*3]=0.75; arr[i*3+1]=0.8; arr[i*3+2]=0.88; }
+  }else{
+    for(let i=0;i<n;i++){
+      const t = (positions[i*3+2]-zMinLocal)/range;
+      heightColor(t, tmp);
+      arr[i*3]=tmp[0]; arr[i*3+1]=tmp[1]; arr[i*3+2]=tmp[2];
+    }
+  }
+  attr.needsUpdate = true;
+}
+
+/* =========================================================
+   点の選択(タップ)
+   ========================================================= */
+const raycaster = new THREE.Raycaster();
+function onTap(clientX, clientY){
+  if(!pointsObj) return;
+  if(mode !== 'dist' && mode !== 'section') return;
+  const ndc = new THREE.Vector2(
+    (clientX/window.innerWidth)*2 - 1,
+    -(clientY/window.innerHeight)*2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  raycaster.params.Points.threshold = Math.max(cloudRadius/150, controls.radius/150);
+  const hits = raycaster.intersectObject(pointsObj);
+  if(hits.length === 0){ toast('点が選べませんでした。点群の上をタップしてください'); return; }
+  // 一番手前(カメラに近い)の点を採用
+  let best = hits[0];
+  for(const h of hits){ if(h.distance < best.distance) best = h; }
+  const p = best.point.clone();
+  // 実際の頂点位置にスナップ
+  if(best.index !== undefined){
+    p.set(positions[best.index*3], positions[best.index*3+1], positions[best.index*3+2]);
+  }
+  addPicked(p);
+}
+
+function addPicked(p){
+  if(picked.length >= 2){ clearPicks(); }
+  picked.push(p);
+  addMarker(p, picked.length);
+  if(mode === 'dist') updateDistUI();
+  if(mode === 'section') updateSectionUI();
+}
+
+function addMarker(p, num){
+  const size = Math.max(cloudRadius/120, 0.01);
+  const geo = new THREE.SphereGeometry(size, 16, 12);
+  const mat = new THREE.MeshBasicMaterial({color: num===1 ? 0xff8a2a : 0x3ec1ff});
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(p);
+  markerGroup.add(m);
+  if(picked.length === 2){
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([picked[0], picked[1]]);
+    const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({color:0xffffff}));
+    markerGroup.add(line);
+  }
+}
+function clearMarkers(){
+  while(markerGroup.children.length){
+    const c = markerGroup.children.pop();
+    if(c.geometry) c.geometry.dispose();
+    if(c.material) c.material.dispose();
+  }
+}
+function clearPicks(){
+  picked = [];
+  clearMarkers();
+}
+
+/* =========================================================
+   距離測定
+   ========================================================= */
+function updateDistUI(){
+  const hint = $('distHint'), res = $('distResults');
+  if(picked.length === 0){
+    hint.style.display=''; res.style.display='none';
+    hint.innerHTML = '測りたい <b>1点目</b> をタップしてください。';
+  }else if(picked.length === 1){
+    hint.style.display=''; res.style.display='none';
+    hint.innerHTML = '🟠 1点目OK! 次に <b>2点目</b> をタップしてください。';
+  }else{
+    hint.style.display='none'; res.style.display='';
+    const [a,b] = picked;
+    const d3 = a.distanceTo(b);
+    const dh = Math.hypot(b.x-a.x, b.y-a.y);
+    const dv = Math.abs(b.z-a.z);
+    $('dist3d').innerHTML = `${fmt(d3)}<small>m</small>`;
+    $('distH').innerHTML = `${fmt(dh)}<small>m</small>`;
+    $('distV').innerHTML = `${fmt(dv)}<small>m</small>`;
+  }
+}
+
+/* =========================================================
+   断面図
+   ========================================================= */
+function updateSectionUI(){
+  const hint = $('sectionHint');
+  if(picked.length === 0){
+    hint.style.display='';
+    hint.innerHTML = '断面を見たい線の <b>始点</b> をタップしてください。';
+    $('sectionCanvas').style.display='none';
+    $('sectionResults').style.display='none';
+    $('sectionWidthRow').style.display='none';
+  }else if(picked.length === 1){
+    hint.style.display='';
+    hint.innerHTML = '🟠 始点OK! 次に <b>終点</b> をタップしてください。';
+  }else{
+    hint.style.display='none';
+    $('sectionWidthRow').style.display='';
+    $('sectionCanvas').style.display='';
+    $('sectionResults').style.display='';
+    computeSection();
+  }
+}
+
+function computeSection(){
+  if(picked.length < 2) return;
+  const [a,b] = picked;
+  const dx = b.x-a.x, dy = b.y-a.y;
+  const L = Math.hypot(dx,dy);
+  if(L < 0.01){ toast('2点が近すぎます。少し離してタップしてください'); return; }
+  const ux = dx/L, uy = dy/L;
+  const halfW = parseFloat($('sectionWidth').value)/2;
+
+  const samples = [];
+  const n = positions.length/3;
+  for(let i=0;i<n;i++){
+    const px = positions[i*3]-a.x, py = positions[i*3+1]-a.y;
+    const t = px*ux + py*uy;
+    if(t < 0 || t > L) continue;
+    const d = Math.abs(px*uy - py*ux);
+    if(d > halfW) continue;
+    samples.push([t, positions[i*3+2]]);
+  }
+  drawSection(samples, L);
+}
+
+function drawSection(samples, L){
+  const cvs = $('sectionCanvas');
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const W = cvs.clientWidth, H = cvs.clientHeight || 180;
+  cvs.width = W*dpr; cvs.height = H*dpr;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+
+  if(samples.length < 3){
+    ctx.fillStyle = '#98a2ae'; ctx.font = '12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('この線の近くに点がありません。切取り幅を広げてみてください', W/2, H/2);
+    $('secLen').innerHTML = `${fmt(L)}<small>m</small>`;
+    $('secMax').textContent = '-'; $('secMin').textContent = '-';
+    return;
+  }
+
+  let zMin=Infinity, zMax=-Infinity;
+  for(const s of samples){ if(s[1]<zMin)zMin=s[1]; if(s[1]>zMax)zMax=s[1]; }
+  const zPad = Math.max((zMax-zMin)*0.1, 0.2);
+  zMin -= zPad; zMax += zPad;
+
+  const mL=44, mR=10, mT=10, mB=24;
+  const pw = W-mL-mR, ph = H-mT-mB;
+  const X = t => mL + (t/L)*pw;
+  const Y = z => mT + (1-(z-zMin)/(zMax-zMin))*ph;
+
+  // 軸・グリッド
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1;
+  ctx.fillStyle = '#98a2ae'; ctx.font = '10px sans-serif';
+  const zTicks = niceTicks(zMin, zMax, 4);
+  ctx.textAlign = 'right';
+  for(const z of zTicks){
+    const y = Y(z);
+    ctx.beginPath(); ctx.moveTo(mL, y); ctx.lineTo(W-mR, y); ctx.stroke();
+    ctx.fillText(fmt(realZ(z),1), mL-5, y+3);
+  }
+  const tTicks = niceTicks(0, L, 5);
+  ctx.textAlign = 'center';
+  for(const t of tTicks){
+    const x = X(t);
+    ctx.beginPath(); ctx.moveTo(x, mT); ctx.lineTo(x, H-mB); ctx.stroke();
+    ctx.fillText(fmt(t,1)+'m', x, H-8);
+  }
+
+  // 点を描画(多すぎる場合は間引き)
+  const drawStep = Math.max(1, Math.floor(samples.length/8000));
+  ctx.fillStyle = '#3ec1ff';
+  for(let i=0;i<samples.length;i+=drawStep){
+    ctx.fillRect(X(samples[i][0])-1, Y(samples[i][1])-1, 2, 2);
+  }
+
+  $('secLen').innerHTML = `${fmt(L)}<small>m</small>`;
+  $('secMax').innerHTML = `${fmt(realZ(zMax-zPad))}<small>m</small>`;
+  $('secMin').innerHTML = `${fmt(realZ(zMin+zPad))}<small>m</small>`;
+}
+
+function niceTicks(min, max, count){
+  const span = max-min;
+  if(span <= 0) return [min];
+  const rawStep = span/count;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  let step = mag;
+  if(rawStep/mag >= 5) step = mag*5;
+  else if(rawStep/mag >= 2) step = mag*2;
+  const ticks = [];
+  for(let v = Math.ceil(min/step)*step; v <= max; v += step) ticks.push(v);
+  return ticks;
+}
+
+/* =========================================================
+   上方向の軸変換(スキャンアプリのY-up ⇄ 測量のZ-up)
+   ========================================================= */
+let currentUpAxis = 'Z';
+function setUpAxis(axis){
+  if(!positions){ currentUpAxis = axis; return; }
+  if(axis === currentUpAxis) return;
+  const n = positions.length/3;
+  if(axis === 'Y'){
+    // ファイルはY-upと解釈 → シーン(Z-up)へ回転: (x,y,z)→(x,-z,y)
+    for(let i=0;i<n;i++){
+      const y = positions[i*3+1], z = positions[i*3+2];
+      positions[i*3+1] = -z; positions[i*3+2] = y;
+    }
+    const oy = globalOffset.y, oz = globalOffset.z;
+    globalOffset.y = -oz; globalOffset.z = oy;
+  }else{
+    // 逆変換: (x,y,z)→(x,z,-y)
+    for(let i=0;i<n;i++){
+      const y = positions[i*3+1], z = positions[i*3+2];
+      positions[i*3+1] = z; positions[i*3+2] = -y;
+    }
+    const oy = globalOffset.y, oz = globalOffset.z;
+    globalOffset.y = oz; globalOffset.z = -oy;
+  }
+  currentUpAxis = axis;
+  refreshAfterTransform();
+}
+function refreshAfterTransform(){
+  const n = positions.length/3;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+  for(let i=0;i<n;i++){
+    const x=positions[i*3], y=positions[i*3+1], z=positions[i*3+2];
+    if(x<minX)minX=x; if(x>maxX)maxX=x;
+    if(y<minY)minY=y; if(y>maxY)maxY=y;
+    if(z<minZ)minZ=z; if(z>maxZ)maxZ=z;
+  }
+  zMinLocal = minZ; zMaxLocal = maxZ;
+  cloudRadius = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2 || 1;
+  baseMaterialSize = cloudRadius / 260;
+  pointsObj.material.size = baseMaterialSize * parseFloat($('ptSize').value);
+  pointsObj.geometry.attributes.position.needsUpdate = true;
+  pointsObj.geometry.computeBoundingSphere();
+  applyColors();
+  clearPicks();
+  if(mode==='dist') updateDistUI();
+  if(mode==='section') updateSectionUI();
+  controls.fit(new THREE.Vector3((minX+maxX)/2,(minY+maxY)/2,(minZ+maxZ)/2), cloudRadius);
+  $('volBase').value = fmt(realZ(minZ), 2).replace(/,/g,'');
+  $('cloudInfo').innerHTML =
+    `点数: <b>${fmtInt(pointCountShown)}</b>` +
+    (sampleStep>1 ? ` (元 ${fmtInt(pointCountTotal)} 点を 1/${sampleStep} に間引き)` : '') +
+    `<br>広がり: 約 ${fmt(maxX-minX,1)} × ${fmt(maxY-minY,1)} m` +
+    `<br>高さ: ${fmt(realZ(minZ),2)} 〜 ${fmt(realZ(maxZ),2)} m` +
+    (rgbColors ? '<br>色情報: あり(RGB)' : '<br>色情報: なし(高さで色分け)');
+}
+
+/* =========================================================
+   土量計算
+   ========================================================= */
+function calcVolume(){
+  if(!positions){ toast('先に点群を読み込んでください'); return; }
+  const baseReal = parseFloat($('volBase').value);
+  if(!isFinite(baseReal)){ toast('基準の高さを数字で入れてください'); return; }
+  const base = baseReal - globalOffset.z; // ローカルZに変換
+  const cell = parseFloat($('volGrid').value);
+
+  showLoading('土量を計算中...');
+  setTimeout(()=>{
+    const grid = new Map();
+    const n = positions.length/3;
+    for(let i=0;i<n;i++){
+      const gx = Math.floor(positions[i*3]/cell);
+      const gy = Math.floor(positions[i*3+1]/cell);
+      const k = gx + '_' + gy;
+      let c = grid.get(k);
+      if(!c){ c = {sum:0, cnt:0}; grid.set(k, c); }
+      c.sum += positions[i*3+2]; c.cnt++;
+    }
+    let fill = 0, cut = 0;
+    const cellArea = cell*cell;
+    for(const c of grid.values()){
+      const meanZ = c.sum/c.cnt;
+      const dz = meanZ - base;
+      if(dz > 0) fill += dz*cellArea;
+      else cut += (-dz)*cellArea;
+    }
+    const area = grid.size * cellArea;
+    $('volResults').style.display = '';
+    $('volFill').innerHTML = `${fmt(fill,1)}<small>m³</small>`;
+    $('volCut').innerHTML = `${fmt(cut,1)}<small>m³</small>`;
+    $('volArea').innerHTML = `${fmt(area,0)}<small>m²</small>`;
+    $('volCells').innerHTML = `${fmtInt(grid.size)}<small>マス</small>`;
+    const note = $('volNote');
+    note.style.display = '';
+    note.innerHTML = `基準高さ ${fmt(baseReal,2)}m ・ グリッド ${cell}m で計算。` +
+      (sampleStep>1 ? `<br>⚠️ 点を1/${sampleStep}に間引いて表示中のため、概算値です。` : '<br>グリッド平均法による概算値です。');
+    hideLoading();
+  }, 30);
+}
+
+/* =========================================================
+   デモ地形
+   ========================================================= */
+function makeDemoTerrain(){
+  showLoading('デモ地形を作成中...');
+  setTimeout(async ()=>{
+    const size = 60;         // 60m四方
+    const res = isMobile ? 0.18 : 0.12;
+    const xs=[], ys=[], zs=[];
+    const baseElev = 212.0;  // それっぽい標高
+    for(let x=-size/2; x<=size/2; x+=res){
+      for(let y=-size/2; y<=size/2; y+=res){
+        // なだらかな起伏
+        let z = Math.sin(x*0.12)*1.2 + Math.cos(y*0.09)*1.0 + Math.sin((x+y)*0.05)*0.8;
+        // 盛土の山(土量計算のデモ用)
+        const dm = Math.hypot(x-12, y-8);
+        if(dm < 9) z += (9-dm)*0.55 * (1 - dm/9*0.3);
+        // 掘削の溝
+        const dt = Math.abs(y - (-14) - Math.sin(x*0.1)*2);
+        if(dt < 3 && Math.abs(x) < 22) z -= (3-dt)*0.7;
+        // ノイズ
+        z += (Math.random()-0.5)*0.06;
+        xs.push(x + 45230); // 実座標っぽくオフセット
+        ys.push(y + 78410);
+        zs.push(z + baseElev);
+      }
+    }
+    await buildCloud({xs, ys, zs, colors:null, total:xs.length, step:1});
+    toast('デモ地形を表示しました。右の山を土量モードで測ってみてください 🏔️');
+  }, 50);
+}
+
+/* =========================================================
+   ファイル読み込み
+   ========================================================= */
+async function loadFile(file){
+  const name = file.name.toLowerCase();
+  showLoading(`「${file.name}」を読み込み中...`);
+  try{
+    if(name.endsWith('.laz')){
+      throw new Error('LAZ(圧縮)ファイルは非対応です。CloudCompare(無料)などでLAS形式に変換してから読み込んでください。');
+    }
+    const buffer = await file.arrayBuffer();
+    let data, isPly = false;
+    if(name.endsWith('.las')) data = await parseLAS(buffer);
+    else if(name.endsWith('.ply')){ data = await parsePLY(buffer); isPly = true; }
+    else data = await parseText(buffer);
+    await buildCloud(data);
+    if(isPly){
+      // スキャンアプリ(Scaniverse等)のPLYはY軸が上なので自動補正
+      $('upAxis').value = 'Y';
+      setUpAxis('Y');
+      toast('スキャンデータとして上下の向きを補正しました(設定で変更できます)', 4000);
+    }
+  }catch(err){
+    hideLoading();
+    console.error(err);
+    toast('⚠️ ' + (err.message || '読み込みに失敗しました'), 5000);
+  }
+}
+
+/* =========================================================
+   モード切替・UI配線
+   ========================================================= */
+const guides = {
+  view: '',
+  dist: '📏 点群を2か所タップして距離を測る',
+  section: '⛰️ 2か所タップして断面線を引く',
+  volume: '',
+  settings: ''
+};
+function setMode(m){
+  mode = m;
+  document.querySelectorAll('.modeBtn').forEach(b => b.classList.toggle('active', b.dataset.mode===m));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('open'));
+  const panel = $('panel-'+m);
+  if(panel) panel.classList.add('open');
+  clearPicks();
+  if(m==='dist') updateDistUI();
+  if(m==='section') updateSectionUI();
+  const g = $('modeGuide');
+  if(guides[m]){ g.textContent = guides[m]; g.classList.add('show'); }
+  else g.classList.remove('show');
+}
+
+function wireUI(){
+  document.querySelectorAll('.modeBtn').forEach(b => {
+    b.addEventListener('click', ()=> setMode(b.dataset.mode));
+  });
+
+  $('pickFileBtn').addEventListener('click', ()=> $('fileInput').click());
+  $('openFileBtn').addEventListener('click', ()=> $('fileInput').click());
+  $('newFileBtn').addEventListener('click', ()=> $('fileInput').click());
+  $('fileInput').addEventListener('change', e => {
+    if(e.target.files.length) loadFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('demoBtn').addEventListener('click', makeDemoTerrain);
+
+  // ドラッグ&ドロップ
+  const dz = $('dropZone');
+  ['dragover','dragenter'].forEach(ev => {
+    document.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(ev => {
+    document.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('over'); });
+  });
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    if(e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+  });
+
+  $('distClearBtn').addEventListener('click', ()=>{ clearPicks(); updateDistUI(); });
+  $('sectionClearBtn').addEventListener('click', ()=>{ clearPicks(); updateSectionUI(); });
+  $('sectionWidth').addEventListener('input', ()=>{
+    $('sectionWidthVal').textContent = fmt(parseFloat($('sectionWidth').value),2)+' m';
+    if(picked.length===2) computeSection();
+  });
+  $('volCalcBtn').addEventListener('click', calcVolume);
+
+  $('ptSize').addEventListener('input', ()=>{
+    if(pointsObj) pointsObj.material.size = baseMaterialSize * parseFloat($('ptSize').value);
+  });
+  $('colorMode').addEventListener('change', ()=>{
+    if($('colorMode').value==='rgb' && !rgbColors){
+      toast('このデータには色情報がありません');
+      $('colorMode').value = 'height';
+    }
+    applyColors();
+  });
+  $('upAxis').addEventListener('change', ()=> setUpAxis($('upAxis').value));
+  $('resetViewBtn').addEventListener('click', ()=>{
+    if(!pointsObj) return;
+    pointsObj.geometry.computeBoundingSphere();
+    const bs = pointsObj.geometry.boundingSphere;
+    controls.fit(bs.center, bs.radius);
+    toast('視点をリセットしました');
+  });
+
+  $('helpBtn').addEventListener('click', ()=> $('helpModal').classList.add('show'));
+  $('helpCloseBtn').addEventListener('click', ()=> $('helpModal').classList.remove('show'));
+  $('helpModal').addEventListener('click', e => {
+    if(e.target === $('helpModal')) $('helpModal').classList.remove('show');
+  });
+}
+
+/* ---------- 起動 ---------- */
+initThree();
+wireUI();
+</script>
+</body>
+</html>
