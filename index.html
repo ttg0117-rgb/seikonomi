@@ -350,7 +350,7 @@ input,select{font-family:inherit}
 
 <div id="toast"></div>
 
-<input type="file" id="fileInput" accept=".xyz,.csv,.txt,.pts,.las,.laz,.ply" style="display:none">
+<input type="file" id="fileInput" style="display:none">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -1250,6 +1250,11 @@ function makeDemoTerrain(){
    ========================================================= */
 async function loadFile(file){
   const name = file.name.toLowerCase();
+  const ok = ['.xyz','.csv','.txt','.pts','.las','.laz','.ply'];
+  if(!ok.some(ext => name.endsWith(ext))){
+    toast('⚠️ 対応していないファイルです(XYZ/CSV/TXT/PTS/LAS/PLY)', 4000);
+    return;
+  }
   showLoading(`「${file.name}」を読み込み中...`);
   try{
     if(name.endsWith('.laz')){
